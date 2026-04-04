@@ -1,7 +1,6 @@
 package ratelimit
 
 import (
-	"context"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,18 +11,15 @@ type redisStoreType struct {
 	rate       int64
 	limit      uint
 	client     *redis.Client
-	ctx        context.Context
 	panicOnErr bool
 	skip       func(c *gin.Context) bool
 }
 
 func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	p := s.client.Pipeline()
-	cmds, _ := s.client.Pipelined(s.ctx, func(pipeliner redis.Pipeliner) error {
-		pipeliner.Get(s.ctx, key+"ts")
-		pipeliner.Get(s.ctx, key+"hits")
-		return nil
-	})
+	p.Get(c.Request.Context(), key+"ts")
+	p.Get(c.Request.Context(), key+"hits")
+	cmds, _ := p.Exec(c.Request.Context())
 	ts, err := cmds[0].(*redis.StringCmd).Int64()
 	if err != nil {
 		ts = time.Now().Unix()
@@ -34,7 +30,7 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	}
 	if ts+s.rate <= time.Now().Unix() {
 		hits = 0
-		p.Set(s.ctx, key+"hits", hits, time.Duration(0))
+		p.Set(c.Request.Context(), key+"hits", hits, time.Duration(0))
 	}
 	if s.skip != nil && s.skip(c) {
 		return Info{
@@ -45,19 +41,6 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 		}
 	}
 	if hits >= int64(s.limit) {
-		_, err = p.Exec(s.ctx)
-		if err != nil {
-			if s.panicOnErr {
-				panic(err)
-			} else {
-				return Info{
-					Limit:         s.limit,
-					RateLimited:   false,
-					ResetTime:     time.Now().Add(time.Duration((s.rate - (time.Now().Unix() - ts)) * time.Second.Nanoseconds())),
-					RemainingHits: 0,
-				}
-			}
-		}
 		return Info{
 			Limit:         s.limit,
 			RateLimited:   true,
@@ -67,11 +50,11 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	}
 	ts = time.Now().Unix()
 	hits++
-	p.Incr(s.ctx, key+"hits")
-	p.Set(s.ctx, key+"ts", time.Now().Unix(), time.Duration(0))
-	p.Expire(s.ctx, key+"hits", time.Duration(int64(time.Second)*s.rate*2))
-	p.Expire(s.ctx, key+"ts", time.Duration(int64(time.Second)*s.rate*2))
-	_, err = p.Exec(s.ctx)
+	p.Incr(c.Request.Context(), key+"hits")
+	p.Set(c.Request.Context(), key+"ts", time.Now().Unix(), time.Duration(0))
+	p.Expire(c.Request.Context(), key+"hits", time.Duration(int64(time.Second)*s.rate*2))
+	p.Expire(c.Request.Context(), key+"ts", time.Duration(int64(time.Second)*s.rate*2))
+	_, err = p.Exec(c.Request.Context())
 	if err != nil {
 		if s.panicOnErr {
 			panic(err)
@@ -109,7 +92,6 @@ func RedisStore(options *RedisOptions) Store {
 		client:     options.RedisClient,
 		rate:       int64(options.Rate.Seconds()),
 		limit:      options.Limit,
-		ctx:        context.TODO(),
 		panicOnErr: options.PanicOnErr,
 		skip:       options.Skip,
 	}
