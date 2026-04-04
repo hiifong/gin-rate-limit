@@ -21,14 +21,14 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	p := s.client.Pipeline()
 	p.Get(s.ctx, key+"ts")
 	p.Get(s.ctx, key+"hits")
-	ts := time.Now().Unix()
-	var hits int64
 	cmds, _ := p.Exec(s.ctx)
-	if v, err := cmds[0].(*redis.StringCmd).Int64(); err == nil {
-		ts = v
+	ts, err := cmds[0].(*redis.StringCmd).Int64()
+	if err != nil {
+		ts = time.Now().Unix()
 	}
-	if v, err := cmds[1].(*redis.StringCmd).Int64(); err == nil {
-		hits = v
+	hits, err := cmds[1].(*redis.StringCmd).Int64()
+	if err != nil {
+		hits = 0
 	}
 	if ts+s.rate <= time.Now().Unix() {
 		hits = 0
@@ -56,7 +56,7 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	p.Set(s.ctx, key+"ts", time.Now().Unix(), time.Duration(0))
 	p.Expire(s.ctx, key+"hits", time.Duration(int64(time.Second)*s.rate*2))
 	p.Expire(s.ctx, key+"ts", time.Duration(int64(time.Second)*s.rate*2))
-	_, err := p.Exec(s.ctx)
+	_, err = p.Exec(s.ctx)
 	if err != nil {
 		if s.panicOnErr {
 			panic(err)
