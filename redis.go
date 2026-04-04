@@ -54,19 +54,6 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 		}
 	}
 	if hits >= int64(s.limit) {
-		_, err = p.Exec(s.ctx)
-		if err != nil {
-			if s.panicOnErr {
-				panic(err)
-			} else {
-				return Info{
-					Limit:         s.limit,
-					RateLimited:   false,
-					ResetTime:     time.Now().Add(time.Duration((s.rate - (time.Now().Unix() - ts)) * time.Second.Nanoseconds())),
-					RemainingHits: 0,
-				}
-			}
-		}
 		return Info{
 			Limit:         s.limit,
 			RateLimited:   true,
