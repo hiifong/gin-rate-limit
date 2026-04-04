@@ -1,7 +1,6 @@
 package ratelimit
 
 import (
-	"context"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,16 +11,15 @@ type redisStoreType struct {
 	rate       int64
 	limit      uint
 	client     *redis.Client
-	ctx        context.Context
 	panicOnErr bool
 	skip       func(c *gin.Context) bool
 }
 
 func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	p := s.client.Pipeline()
-	p.Get(s.ctx, key+"ts")
-	p.Get(s.ctx, key+"hits")
-	cmds, _ := p.Exec(s.ctx)
+	p.Get(c.Request.Context(), key+"ts")
+	p.Get(c.Request.Context(), key+"hits")
+	cmds, _ := p.Exec(c.Request.Context())
 	ts, err := cmds[0].(*redis.StringCmd).Int64()
 	if err != nil {
 		ts = time.Now().Unix()
@@ -32,7 +30,7 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	}
 	if ts+s.rate <= time.Now().Unix() {
 		hits = 0
-		p.Set(s.ctx, key+"hits", hits, time.Duration(0))
+		p.Set(c.Request.Context(), key+"hits", hits, time.Duration(0))
 	}
 	if s.skip != nil && s.skip(c) {
 		return Info{
@@ -52,11 +50,11 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	}
 	ts = time.Now().Unix()
 	hits++
-	p.Incr(s.ctx, key+"hits")
-	p.Set(s.ctx, key+"ts", time.Now().Unix(), time.Duration(0))
-	p.Expire(s.ctx, key+"hits", time.Duration(int64(time.Second)*s.rate*2))
-	p.Expire(s.ctx, key+"ts", time.Duration(int64(time.Second)*s.rate*2))
-	_, err = p.Exec(s.ctx)
+	p.Incr(c.Request.Context(), key+"hits")
+	p.Set(c.Request.Context(), key+"ts", time.Now().Unix(), time.Duration(0))
+	p.Expire(c.Request.Context(), key+"hits", time.Duration(int64(time.Second)*s.rate*2))
+	p.Expire(c.Request.Context(), key+"ts", time.Duration(int64(time.Second)*s.rate*2))
+	_, err = p.Exec(c.Request.Context())
 	if err != nil {
 		if s.panicOnErr {
 			panic(err)
@@ -94,7 +92,6 @@ func RedisStore(options *RedisOptions) Store {
 		client:     options.RedisClient,
 		rate:       int64(options.Rate.Seconds()),
 		limit:      options.Limit,
-		ctx:        context.Background(),
 		panicOnErr: options.PanicOnErr,
 		skip:       options.Skip,
 	}
