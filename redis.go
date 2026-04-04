@@ -94,7 +94,7 @@ func RedisStore(options *RedisOptions) Store {
 		client:     options.RedisClient,
 		rate:       int64(options.Rate.Seconds()),
 		limit:      options.Limit,
-		ctx:        context.TODO(),
+		ctx:        context.Background(),
 		panicOnErr: options.PanicOnErr,
 		skip:       options.Skip,
 	}
