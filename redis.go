@@ -19,11 +19,20 @@ type redisStoreType struct {
 
 func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	p := s.client.Pipeline()
-	cmds, _ := s.client.Pipelined(s.ctx, func(pipeliner redis.Pipeliner) error {
-		pipeliner.Get(s.ctx, key+"ts")
-		pipeliner.Get(s.ctx, key+"hits")
-		return nil
-	})
+	p.Get(s.ctx, key+"ts")
+	p.Get(s.ctx, key+"hits")
+	cmds, err := p.Exec(s.ctx)
+	if err != nil && err != redis.Nil {
+		if s.panicOnErr {
+			panic(err)
+		}
+		return Info{
+			Limit:         s.limit,
+			RateLimited:   false,
+			ResetTime:     time.Now().Add(time.Duration(s.rate) * time.Second),
+			RemainingHits: s.limit,
+		}
+	}
 	ts, err := cmds[0].(*redis.StringCmd).Int64()
 	if err != nil {
 		ts = time.Now().Unix()
