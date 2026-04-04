@@ -7,6 +7,33 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var rateLimitScript = redis.NewScript(`
+local key_ts   = KEYS[1]
+local key_hits = KEYS[2]
+local rate     = tonumber(ARGV[1])
+local limit    = tonumber(ARGV[2])
+local now      = tonumber(ARGV[3])
+
+local ts   = tonumber(redis.call('GET', key_ts))   or now
+local hits = tonumber(redis.call('GET', key_hits)) or 0
+
+if ts + rate <= now then
+    hits = 0
+end
+
+if hits >= limit then
+    return {ts, hits, 1}
+end
+
+hits = hits + 1
+redis.call('SET',    key_ts,   now)
+redis.call('SET',    key_hits, hits)
+redis.call('EXPIRE', key_ts,   rate * 2)
+redis.call('EXPIRE', key_hits, rate * 2)
+
+return {ts, hits, 0}
+`)
+
 type redisStoreType struct {
 	rate       int64
 	limit      uint
@@ -16,62 +43,49 @@ type redisStoreType struct {
 }
 
 func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
-	p := s.client.Pipeline()
-	p.Get(c.Request.Context(), key+"ts")
-	p.Get(c.Request.Context(), key+"hits")
-	cmds, _ := p.Exec(c.Request.Context())
-	ts, err := cmds[0].(*redis.StringCmd).Int64()
-	if err != nil {
-		ts = time.Now().Unix()
-	}
-	hits, err := cmds[1].(*redis.StringCmd).Int64()
-	if err != nil {
-		hits = 0
-	}
-	if ts+s.rate <= time.Now().Unix() {
-		hits = 0
-		p.Set(c.Request.Context(), key+"hits", hits, time.Duration(0))
-	}
+	now := time.Now().Unix()
+
 	if s.skip != nil && s.skip(c) {
 		return Info{
 			Limit:         s.limit,
 			RateLimited:   false,
-			ResetTime:     time.Now().Add(time.Duration((s.rate - (time.Now().Unix() - ts)) * time.Second.Nanoseconds())),
-			RemainingHits: s.limit - uint(hits),
+			ResetTime:     time.Now().Add(time.Duration(s.rate) * time.Second),
+			RemainingHits: s.limit,
 		}
 	}
-	if hits >= int64(s.limit) {
-		return Info{
-			Limit:         s.limit,
-			RateLimited:   true,
-			ResetTime:     time.Now().Add(time.Duration((s.rate - (time.Now().Unix() - ts)) * time.Second.Nanoseconds())),
-			RemainingHits: 0,
-		}
-	}
-	ts = time.Now().Unix()
-	hits++
-	p.Incr(c.Request.Context(), key+"hits")
-	p.Set(c.Request.Context(), key+"ts", time.Now().Unix(), time.Duration(0))
-	p.Expire(c.Request.Context(), key+"hits", time.Duration(int64(time.Second)*s.rate*2))
-	p.Expire(c.Request.Context(), key+"ts", time.Duration(int64(time.Second)*s.rate*2))
-	_, err = p.Exec(c.Request.Context())
+
+	res, err := rateLimitScript.Run(
+		c.Request.Context(),
+		s.client,
+		[]string{key + "ts", key + "hits"},
+		s.rate, s.limit, now,
+	).Slice()
 	if err != nil {
 		if s.panicOnErr {
 			panic(err)
-		} else {
-			return Info{
-				Limit:         s.limit,
-				RateLimited:   false,
-				ResetTime:     time.Now().Add(time.Duration((s.rate - (time.Now().Unix() - ts)) * time.Second.Nanoseconds())),
-				RemainingHits: s.limit - uint(hits),
-			}
 		}
+		return Info{
+			Limit:         s.limit,
+			RateLimited:   false,
+			ResetTime:     time.Now().Add(time.Duration(s.rate) * time.Second),
+			RemainingHits: s.limit,
+		}
+	}
+
+	ts          := res[0].(int64)
+	hits        := res[1].(int64)
+	rateLimited := res[2].(int64) == 1
+	resetTime   := time.Now().Add(time.Duration(s.rate-(now-ts)) * time.Second)
+
+	remaining := uint(0)
+	if !rateLimited {
+		remaining = s.limit - uint(hits)
 	}
 	return Info{
 		Limit:         s.limit,
-		RateLimited:   false,
-		ResetTime:     time.Now().Add(time.Duration((s.rate - (time.Now().Unix() - ts)) * time.Second.Nanoseconds())),
-		RemainingHits: s.limit - uint(hits),
+		RateLimited:   rateLimited,
+		ResetTime:     resetTime,
+		RemainingHits: remaining,
 	}
 }
 
