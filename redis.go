@@ -44,6 +44,16 @@ type redisStoreType struct {
 
 func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	now := time.Now().Unix()
+
+	if s.skip != nil && s.skip(c) {
+		return Info{
+			Limit:         s.limit,
+			RateLimited:   false,
+			ResetTime:     time.Now().Add(time.Duration(s.rate) * time.Second),
+			RemainingHits: s.limit,
+		}
+	}
+
 	res, err := rateLimitScript.Run(
 		c.Request.Context(),
 		s.client,
@@ -66,15 +76,6 @@ func (s *redisStoreType) Limit(key string, c *gin.Context) Info {
 	hits        := res[1].(int64)
 	rateLimited := res[2].(int64) == 1
 	resetTime   := time.Now().Add(time.Duration(s.rate-(now-ts)) * time.Second)
-
-	if s.skip != nil && s.skip(c) {
-		return Info{
-			Limit:         s.limit,
-			RateLimited:   false,
-			ResetTime:     resetTime,
-			RemainingHits: s.limit - uint(hits),
-		}
-	}
 
 	remaining := uint(0)
 	if !rateLimited {
