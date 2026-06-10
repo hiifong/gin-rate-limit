@@ -13,49 +13,6 @@ Install
 
 <br>
 
-Redis Example
-
-```go
-package main
-
-import (
-	"github.com/hiifong/gin-rate-limit"
-	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
-	"time"
-)
-
-func keyFunc(c *gin.Context) string {
-	return c.ClientIP()
-}
-
-func errorHandler(c *gin.Context, info ratelimit.Info) {
-	c.String(429, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
-}
-
-func main() {
-	server := gin.Default()
-	// This makes it so each ip can only make 5 requests per second
-	store := ratelimit.RedisStore(&ratelimit.RedisOptions{
-		RedisClient: redis.NewClient(&redis.Options{
-			Addr: "localhost:7680",
-		}),
-		Rate:  time.Second,
-		Limit: 5,
-	})
-	mw := ratelimit.RateLimiter(store, &ratelimit.Options{
-		ErrorHandler: errorHandler,
-		KeyFunc: keyFunc,
-    })
-	server.GET("/", mw, func(c *gin.Context) {
-		c.String(200, "Hello World")
-	})
-	server.Run(":8080")
-}
-```
-
-<br>
-
 Basic Setup
 
 ```go
