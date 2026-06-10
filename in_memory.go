@@ -1,9 +1,10 @@
 package ratelimit
 
 import (
-	"github.com/gin-gonic/gin"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type user struct {

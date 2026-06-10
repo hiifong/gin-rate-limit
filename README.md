@@ -1,7 +1,3 @@
-<a href="https://jgltechnologies.com/discord">
-<img src="https://discord.com/api/guilds/844418702430175272/embed.png">
-</a>
-
 # gin-rate-limit
 
 gin-rate-limit is a rate limiter for the <a href="https://github.com/gin-gonic/gin">gin framework</a>. By default, it
@@ -12,7 +8,7 @@ Contributions would be appreciated.
 Install
 
  ```shell
- go get github.com/JGLTechnologies/gin-rate-limit
+ go get github.com/hiifong/gin-rate-limit
 ```
 
 <br>
@@ -23,7 +19,7 @@ Redis Example
 package main
 
 import (
-	"github.com/JGLTechnologies/gin-rate-limit"
+	"github.com/hiifong/gin-rate-limit"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"time"
@@ -67,7 +63,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/JGLTechnologies/gin-rate-limit"
+	"github.com/hiifong/gin-rate-limit"
 	"time"
 )
 
@@ -106,7 +102,7 @@ Custom Store Example
 package main
 
 import (
-	"github.com/JGLTechnologies/gin-rate-limit"
+	"github.com/hiifong/gin-rate-limit"
 	"github.com/gin-gonic/gin"
 )
 
